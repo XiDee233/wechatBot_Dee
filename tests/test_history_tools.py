@@ -156,6 +156,22 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(result['status'], 'prepared')
         self.assertEqual(self.session.pending_mention['member'], '甲')
 
+    def test_member_directory_distinguishes_self_from_other_members(self):
+        self.db.members.extend([
+            {'username': 'wxid_self', 'nick_name': '细Dee', 'remark': ''},
+            {'username': 'wxid_so', 'nick_name': 'So_yah', 'remark': ''},
+        ])
+        listing = self.session.list_members(query='dee')
+        self.assertEqual(len(listing['members']), 1)
+        self.assertEqual(listing['members'][0]['nick_name'], '细Dee')
+        self.assertTrue(listing['members'][0]['is_self'])
+        resolved = self.session.execute(
+            'resolve_group_member', {'reference': '细Dee'}
+        )
+        self.assertEqual(resolved['status'], 'ok')
+        self.assertTrue(resolved['is_self'])
+        self.assertNotEqual(resolved['id'], 'wxid_so')
+
     def test_mention_preserves_explicit_user_name(self):
         self.db.members.append({
             'username': 'wxid_bro', 'nick_name': 'b哥', 'remark': '谢海斌'
