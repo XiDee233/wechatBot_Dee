@@ -25,7 +25,9 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 import time
+import uuid
 
 from wechatauto.wx import WeChat as _BaseWeChat
 from wechatauto.wx import Chat as _BaseChat
@@ -326,9 +328,42 @@ class WxMessage:
 class WeChat(_BaseWeChat):
     """兼容层主类：在 wechatauto.wx.WeChat 之上补齐 bot 需要的接口。"""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, nickname=None, start_listener=False, debug=False, **kwargs):
+        # Do not call the upstream constructor: it uses one global temp folder
+        # for every process. A listener and a diagnostic/history process can
+        # then replace the same decrypted .db/.tmp files and cause persistent
+        # PermissionError before keyword matching is reached.
+        from wechatauto.guia import WeChatGUI
+        from wechatauto.db import WeChatDB
+
+        self._gui = WeChatGUI()
+        cache_root = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            'history_cache',
+            'live-db-%s-%s' % (os.getpid(), uuid.uuid4().hex[:8]),
+        )
+        os.makedirs(cache_root, exist_ok=True)
+        self._db = WeChatDB(workdir=cache_root)
+        info = self._db.get_self_info()
+        self.nickname = nickname or info.get('nick_name') or info.get('username') or ''
+        self.who = self.nickname
+        self._wxid = info.get('username') or ''
+        self.listen = {}
+        self._listener = None
+        self._listen_wrappers = {}
+        self._listener_is_listening = False
+        self._listener_stop_event = threading.Event()
+        self._current_chat = None
+        self._listen_all_active = False
+        self._listen_all_callback = None
+        self._moment_api = None
+        self._moment = None
         self._media = MediaDownloader(self._db)
+        if start_listener:
+            self._listener_start()
+        if debug:
+            wxlog.set_debug(True)
+            wxlog.debug('Debug mode is on')
 
     def GetHistorySession(self, nickname, vision=None, vision_batch=None):
         """Bind tool access to the already registered chat, never model input."""
