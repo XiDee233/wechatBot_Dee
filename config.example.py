@@ -33,12 +33,8 @@ MAX_TOKEN = 2000
 # DeepSeek温度
 TEMPERATURE = 0.7
 
-# Moonshot AI配置（用于图片和表情包识别）
-# API申请https://platform.moonshot.cn/
-MOONSHOT_API_KEY = ''
-MOONSHOT_BASE_URL = 'https://vg.v1api.cc/v1'
-MOONSHOT_MODEL = 'gpt-4o'
-MOONSHOT_TEMPERATURE = 0.5
+# 图片和表情识别复用主聊天配置
+
 ENABLE_IMAGE_RECOGNITION = True
 ENABLE_EMOJI_RECOGNITION = True
 
@@ -164,3 +160,6 @@ FORUM_MAX_TOKEN = 1200
 
 # DeepSeek official main chat thinking mode
 ENABLE_THINKING = False
+
+# On-demand local history and attachments for the current monitored group
+ENABLE_HISTORY_SEARCH = True

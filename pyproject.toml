@@ -35,6 +35,7 @@ dependencies = [
     "requests",
     "beautifulsoup4",
     "lxml",
+    "pypdf>=6.0,<7",
 ]
 
 [project.urls]
@@ -47,7 +48,7 @@ wechatbot = "bot:main"
 wechatbot-webui = "config_editor:main"
 
 [tool.setuptools]
-py-modules = ["bot", "config", "config_editor", "run", "test_bot", "wxbot"]
+py-modules = ["bot", "config", "config_editor", "run", "test_bot", "wxbot", "history_tools", "vision"]
 include-package-data = true
 
 [tool.setuptools.packages.find]

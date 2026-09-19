@@ -47,3 +47,5 @@ COMMIT_MSG.txt
 *.sqlite*
 *.lock
 *.pid
+
+/history_cache/

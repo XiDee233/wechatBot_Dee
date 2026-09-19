@@ -1200,7 +1200,7 @@
                 });
                 
                 // 更新已选中的WeAPIs配置
-                const providers = ['apiProvider', 'assistantApiProvider', 'imageApiProvider', 'onlineApiProvider', 'forumApiProvider'];
+                const providers = ['apiProvider', 'assistantApiProvider', 'onlineApiProvider', 'forumApiProvider'];
                 providers.forEach(providerId => {
                     const provider = document.getElementById(providerId);
                     if (provider && weapisVariants.has(provider.value)) {
@@ -1378,6 +1378,7 @@
                     ];
                 } else if (apiUrl === 'https://api.deepseek.com') {
                     options = [
+                        { value: "deepseek-flash", text: "deepseek-flash（支持文字和图片）" },
                         { value: "deepseek-chat", text: "deepseek-chat（DeepSeek 官方）" },
                         { value: "deepseek-reasoner", text: "deepseek-reasoner（DeepSeek 官方）" },
                         { value: "other", text: "其它" }
@@ -1463,105 +1464,6 @@
                 finalModelInput.value = this.value;
             });
 
-
-            const imageApiProvider = document.getElementById('imageApiProvider');
-            const customImageApiUrl = document.getElementById('customImageApiUrl');
-            const finalImageApiUrl = document.getElementById('finalImageApiUrl');
-            const imageModelSelect = document.getElementById('imageModelSelect');
-            const customImageModel = document.getElementById('customImageModel');
-            const finalImageModel = document.getElementById('finalImageModel');
-
-            function updateImageModelOptions() {
-                let options = [];
-                const apiUrl = imageApiProvider.value;
-                const savedModel = finalImageModel.value;
-
-                if (apiUrl === 'https://api.moonshot.cn/v1') {
-                    options = [
-                        { value: 'moonshot-v1-128k-vision-preview', text: 'moonshot-v1-128k-vision-preview' },
-                        { value: 'moonshot-v1-32k-vision-preview',  text: 'moonshot-v1-32k-vision-preview' },
-                        { value: 'moonshot-v1-8k-vision-preview',   text: 'moonshot-v1-8k-vision-preview' },
-                        { value: 'other', text: '其它' }
-                    ];
-                } else if (isWeAPIsUrlSync(apiUrl)) {
-                    options = [
-                        { value: 'gpt-4o', text: 'gpt-4o' },
-                        { value: 'other', text: '其它' }
-                    ];
-                } else {
-                    options = [ { value: 'other', text: '其它' } ];
-                }
-
-                imageModelSelect.innerHTML = '';
-                let modelInOptions = false;
-                options.forEach(opt => {
-                    const o = document.createElement('option');
-                    o.value = opt.value;
-                    o.textContent = opt.text;
-                    if (opt.value === savedModel) {
-                        o.selected = true;
-                        modelInOptions = true;
-                    }
-                    imageModelSelect.appendChild(o);
-                });
-
-                if (!modelInOptions && savedModel) {
-                    imageModelSelect.value = 'other';
-                    customImageModel.value = savedModel;
-                } else if (modelInOptions && imageModelSelect.value !== 'other') {
-                    customImageModel.value = '';
-                }
-
-                finalImageModel.value = savedModel || (imageModelSelect.value === 'other' ? customImageModel.value : imageModelSelect.value);
-                imageModelSelect.dispatchEvent(new Event('change'));
-            }
-
-            if (imageApiProvider.value === 'other') {
-                customImageApiUrl.style.display = 'block';
-            } else {
-                customImageApiUrl.style.display = 'none';
-                finalImageApiUrl.value = imageApiProvider.value;
-            }
-            updateImageModelOptions();
-            if (imageModelSelect.value === 'other') {
-                 customImageModel.style.display = 'block';
-            } else {
-                 customImageModel.style.display = 'none';
-            }
-
-
-            imageApiProvider.addEventListener('change', async function() {
-                if (this.value === 'other') {
-                    customImageApiUrl.style.display = 'block';
-                    finalImageApiUrl.value = customImageApiUrl.value;
-                } else {
-                    customImageApiUrl.style.display = 'none';
-                    if (isWeAPIsUrlSync(this.value)) {
-                        // 选择WeAPIs时检测可用节点
-                        const availableUrl = await selectAvailableWeAPIsNode();
-                        this.value = availableUrl;
-                        finalImageApiUrl.value = availableUrl;
-                    } else {
-                        finalImageApiUrl.value = this.value;
-                    }
-                }
-                updateImageModelOptions();
-            });
-            customImageApiUrl.addEventListener('input', () => {
-                finalImageApiUrl.value = customImageApiUrl.value;
-            });
-            imageModelSelect.addEventListener('change', function() {
-                if (this.value === 'other') {
-                    customImageModel.style.display = 'block';
-                    finalImageModel.value = customImageModel.value;
-                } else {
-                    customImageModel.style.display = 'none';
-                    finalImageModel.value = this.value;
-                }
-            });
-            customImageModel.addEventListener('input', () => {
-                finalImageModel.value = customImageModel.value;
-            });
 
             // 辅助模型配置逻辑
             const enableAssistantModel = document.getElementById('enableAssistantModel');
@@ -3569,7 +3471,6 @@ document.getElementById('oneKeyDiagnosticButton').addEventListener('click', asyn
                 <li><a href="#" data-target="section-user-list">用户列表</a></li>
                 <li><a href="#" data-target="section-prompt-management">Prompt管理</a></li>
                 <li><a href="#" data-target="section-chat-model">Chat 模型配置</a></li>
-                <li><a href="#" data-target="section-image-recognition">图片/表情包识别</a></li>
                 <li><a href="#" data-target="section-online-search">联网搜索配置</a></li>
                 <li><a href="#" data-target="section-active-emoji">主动表情包配置</a></li>
                 <li><a href="#" data-target="section-group-chat">群聊消息接收</a></li>
@@ -3790,6 +3691,26 @@ document.getElementById('oneKeyDiagnosticButton').addEventListener('click', asyn
                         <small>用于 DeepSeek 官方 API 的主聊天模型。开启时先思考再回答，关闭时直接回答；不会修改模型名称。思考可能增加等待时间和 Token 消耗，只发送最终回答。其他服务商暂不应用此开关。保存后生效。</small>
                     </div>
                     <div class="form-group">
+                        <div class="switch-item">
+                            <label for="enableHistorySearch">按需查询本群历史记录和附件</label>
+                            <div class="switch"><label class="switch-label"><input id="enableHistorySearch" type="checkbox" name="ENABLE_HISTORY_SEARCH" {% if config.ENABLE_HISTORY_SEARCH %}checked{% endif %}><span class="slider round"></span></label></div>
+                        </div>
+                        <small>例如“10天前甲说了啥？”“昨天甲发的图片是什么？”“总结上周的方案文件”。只查当前群本机记录；查到的片段或附件内容交给当前主模型处理。单次最多31天、80条结果、3个附件；本机未同步或未下载的内容无法读取。</small>
+                    </div>
+                    <div class="form-group">
+                        <div class="switch-container">
+                            <div class="switch-item">
+                                <label>启用图片识别功能</label>
+                                <div class="switch"><label class="switch-label"><input type="checkbox" name="ENABLE_IMAGE_RECOGNITION" {% if config.ENABLE_IMAGE_RECOGNITION %}checked{% endif %}><span class="slider round"></span></label></div>
+                            </div>
+                            <div class="switch-item">
+                                <label>启用表情包识别功能</label>
+                                <div class="switch"><label class="switch-label"><input type="checkbox" name="ENABLE_EMOJI_RECOGNITION" {% if config.ENABLE_EMOJI_RECOGNITION %}checked{% endif %}><span class="slider round"></span></label></div>
+                            </div>
+                        </div>
+                    </div>
+                    <p><small>文字、图片和表情识别统一使用本页的模型、API地址、Key及思考模式，无需单独配置。DeepSeek官方当前支持视觉的模型为deepseek-flash；保留你填写的模型名。</small></p>
+                    <div class="form-group">
                         <label>API Key:</label>
                         <input type="text" placeholder="sk-xxxxxxxxxx" name="DEEPSEEK_API_KEY" value="{{ config.DEEPSEEK_API_KEY }}" class="api-key-input">
                         <small class="api-key-hint">{{ "出于安全考虑，已隐藏完整API Key。如需修改，请直接输入新的API Key。" if "*" in config.DEEPSEEK_API_KEY else "" }}</small>
@@ -3870,50 +3791,6 @@ document.getElementById('oneKeyDiagnosticButton').addEventListener('click', asyn
                             </div>
                             <small>启用后，记忆总结和重要性评估也将使用辅助模型，进一步降低主模型调用成本，但可能降低总结质量。</small>
                         </div>
-                    </div>
-                </div>
-
-                <div id="section-image-recognition" class="content-panel">
-                    <h2>图片/表情包识别配置</h2>
-                    <div class="form-group">
-                        <div class="switch-container">
-                            <div class="switch-item">
-                                <label>启用图片识别功能</label>
-                                <div class="switch"><label class="switch-label"><input type="checkbox" name="ENABLE_IMAGE_RECOGNITION" {% if config.ENABLE_IMAGE_RECOGNITION %}checked{% endif %}><span class="slider round"></span></label></div>
-                            </div>
-                            <div class="switch-item">
-                                <label>启用表情包识别功能</label>
-                                <div class="switch"><label class="switch-label"><input type="checkbox" name="ENABLE_EMOJI_RECOGNITION" {% if config.ENABLE_EMOJI_RECOGNITION %}checked{% endif %}><span class="slider round"></span></label></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>图像识别API服务商：</label>
-                        <select id="imageApiProvider" name="temp_IMAGE_BASE_URL">
-                            <option value="https://api.moonshot.cn/v1" {% if config.MOONSHOT_BASE_URL=='https://api.moonshot.cn/v1' %}selected{% endif %}>MOONSHOT月之暗面</option>
-                            <option value="https://vg.v1api.cc/v1" {% if config.MOONSHOT_BASE_URL=='https://vg.v1api.cc/v1' %}selected{% endif %}>WeAPIs</option>
-                            <option value="other" {% if config.MOONSHOT_BASE_URL not in ['https://api.moonshot.cn/v1','https://vg.v1api.cc/v1'] %}selected{% endif %}>其它</option>
-                        </select>
-                        <input type="text" id="customImageApiUrl" class="custom-input" placeholder="请输入自定义API地址" {% if config.MOONSHOT_BASE_URL not in ['https://api.moonshot.cn/v1','https://vg.v1api.cc/v1'] %} value="{{ config.MOONSHOT_BASE_URL }}" style="display:block;" {% endif %}>
-                        <input type="hidden" id="finalImageApiUrl" name="MOONSHOT_BASE_URL" value="{{ config.MOONSHOT_BASE_URL }}">
-                        <small>推荐使用WeAPIs，API Key可与Chat模型配置保持一致。<a href="https://vg.v1api.cc/register?aff=WnGO" target="_blank">[点击注册]</a></small>
-                        <small>MOONSHOT月之暗面注册地址：<a href="https://platform.moonshot.cn/" target="_blank">[点击注册]</a></small>
-                    </div>
-                    <div class="form-group">
-                        <label>识图模型选择：</label>
-                        <select id="imageModelSelect" name="temp_IMAGE_MODEL"></select>
-                        <input type="text" id="customImageModel" class="custom-input" placeholder="请输入自定义模型名称" {% if config.MOONSHOT_MODEL not in ['moonshot-v1-128k-vision-preview','moonshot-v1-32k-vision-preview','moonshot-v1-8k-vision-preview','gpt-4o'] %} value="{{ config.MOONSHOT_MODEL }}" style="display:block;" {% endif %}>
-                        <input type="hidden" id="finalImageModel" name="MOONSHOT_MODEL" value="{{ config.MOONSHOT_MODEL }}">
-                    </div>
-                    <div class="form-group">
-                        <label>API Key:</label>
-                        <input type="text" placeholder="sk-xxxxxxxxxx" name="MOONSHOT_API_KEY" value="{{ config.MOONSHOT_API_KEY }}" class="api-key-input">
-                        <small class="api-key-hint">{{ "出于安全考虑，已隐藏完整API Key。如需修改，请直接输入新的API Key。" if "*" in config.MOONSHOT_API_KEY else "" }}</small>
-                    </div>
-                    <div class="form-group">
-                        <label>温度 (0-1):</label>
-                        <input type="number" step="0.1" name="MOONSHOT_TEMPERATURE" value="{{ config.MOONSHOT_TEMPERATURE }}">
-                        <small>温度越高，ai思维越发散，但是温度过高可能导致ai胡言乱语。</small>
                     </div>
                 </div>
 

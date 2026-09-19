@@ -34,6 +34,8 @@ import ctypes
 os.environ["PROJECT_NAME"] = 'iwyxdxl/WeChatBot_WXAUTO_SE'
 # 消息收发由 wxbot 兼容层驱动（wechatauto，适配微信 4.x 自绘渲染）
 from wxbot import WeChat
+from history_tools import complete_with_history
+from vision import recognize_image as recognize_with_main_model
 from wechatauto.param import WxParam
 WxParam.ENABLE_FILE_LOGGER = False
 WxParam.FORCE_MESSAGE_XBIAS = True
@@ -918,7 +920,7 @@ def get_deepseek_response(message, user_id, store_context=True, is_summary=False
             logger.info(f"工具调用 (store_context=False)，ID: {user_id}。仅发送提供的消息。")
 
         # --- 调用 API ---
-        reply = call_chat_api_with_retry(messages_to_send, user_id, is_summary=is_summary)
+        reply = call_chat_api_with_retry(messages_to_send, user_id, is_summary=is_summary, allow_history=store_context and not is_summary)
 
         # --- 如果需要，存储助手回复到上下文中 ---
         if store_context:
@@ -951,7 +953,7 @@ def strip_before_thought_tags(text):
     else:
         return text
 
-def call_chat_api_with_retry(messages_to_send, user_id, max_retries=2, is_summary=False):
+def call_chat_api_with_retry(messages_to_send, user_id, max_retries=2, is_summary=False, allow_history=False):
     """
     调用 Chat API 并在第一次失败或返回空结果时重试。
 
@@ -979,14 +981,17 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=2, is_summar
                     'thinking': {'type': 'enabled' if thinking_enabled else 'disabled'}
                 }
 
-            response = client.chat.completions.create(
-                model=MODEL,
-                messages=messages_to_send,
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKEN,
-                stream=False,
-                **thinking_options
-            )
+            options = dict(model=MODEL, temperature=TEMPERATURE,
+                           max_tokens=MAX_TOKEN, stream=False, **thinking_options)
+            history_session = None
+            if allow_history and get_dynamic_config('ENABLE_HISTORY_SEARCH', True):
+                history_session = wx.GetHistorySession(
+                    user_id, vision=lambda path: recognize_with_main_model(path, get_dynamic_config))
+            if history_session is not None:
+                response = complete_with_history(
+                    client.chat.completions.create, messages_to_send, history_session, **options)
+            else:
+                response = client.chat.completions.create(messages=messages_to_send, **options)
 
             if response.choices:
                 # 检查API是否返回了空的消息内容
@@ -1278,7 +1283,7 @@ def message_listener(msg, chat):
                                 # 保存当前状态
                                 original_can_send_messages = can_send_messages
                                 # 处理图片
-                                content = recognize_image_with_moonshot(image_path, is_emoji=False)
+                                content = recognize_image_with_main_config(image_path, is_emoji=False)
                                 if content:
                                     logger.info(f"图片识别成功: {content}")
                                     content = f"[图片识别结果]: {content}"
@@ -1301,7 +1306,7 @@ def message_listener(msg, chat):
                                 # 保存当前状态
                                 original_can_send_messages = can_send_messages
                                 # 处理图片
-                                image_content = recognize_image_with_moonshot(content, is_emoji=False)
+                                image_content = recognize_image_with_main_config(content, is_emoji=False)
                                 if image_content:
                                     logger.info(f"图片识别成功: {image_content}")
                                     content = f"[图片识别结果]: {image_content}"
@@ -1425,81 +1430,18 @@ def message_listener(msg, chat):
         else:
             handle_wxauto_message(msg, who)
 
-def recognize_image_with_moonshot(image_path, is_emoji=False):
-    # 先暂停向API发送消息队列
+def recognize_image_with_main_config(image_path, is_emoji=False):
     global can_send_messages
     can_send_messages = False
-
-    """使用AI识别图片内容并返回文本"""
     try:
-
-        processed_image_path = image_path
-        
-        # 读取图片内容并编码
-        with open(processed_image_path, 'rb') as img_file:
-            image_content = base64.b64encode(img_file.read()).decode('utf-8')
-            
-        headers = {
-            'Authorization': f'Bearer {MOONSHOT_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        text_prompt = "请用中文描述这张图片的主要内容或主题。不要使用'这是'、'这张'等开头，直接描述。如果有文字，请包含在描述中。" if not is_emoji else "请用中文简洁地描述这个聊天窗口最后一张表情包所表达的情绪、含义或内容。如果表情包含文字，请一并描述。注意：1. 只描述表情包本身，不要添加其他内容 2. 不要出现'这是'、'这个'等词语"
-        data = {
-            "model": MOONSHOT_MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_content}"}},
-                        {"type": "text", "text": text_prompt}
-                    ]
-                }
-            ],
-            "temperature": MOONSHOT_TEMPERATURE
-        }
-        
-        response = requests.post(f"{MOONSHOT_BASE_URL}/chat/completions", headers=headers, json=data)
-        response.raise_for_status()
-        result = response.json()
-        recognized_text = result['choices'][0]['message']['content']
-        
-        if is_emoji:
-            # 如果recognized_text包含"最后一张表情包是"，只保留后面的文本
-            if "最后一张表情包" in recognized_text:
-                recognized_text = recognized_text.split("最后一张表情包", 1)[1].strip()
-            recognized_text = "发送了表情包：" + recognized_text
-        else:
-            recognized_text = "发送了图片：" + recognized_text
-            
-        logger.info(f"AI图片识别结果: {recognized_text}")
-        
-        # 归档表情截图：从临时目录移动到 wechatauto_media\emoji 永久保存
-        if is_emoji and os.path.exists(processed_image_path):
-            try:
-                archive_dir = os.path.join(
-                    os.path.expanduser("~"), "Documents",
-                    "wechatauto_media", "emoji")
-                os.makedirs(archive_dir, exist_ok=True)
-                dst = os.path.join(archive_dir, os.path.basename(processed_image_path))
-                shutil.move(processed_image_path, dst)
-                logger.debug(f"已归档表情截图: {dst}")
-            except Exception as clean_err:
-                logger.warning(f"归档表情截图失败: {clean_err}")
-                try:
-                    if os.path.exists(processed_image_path):
-                        os.remove(processed_image_path)
-                except Exception:
-                    pass
-                
-        # 恢复向Deepseek发送消息队列
+        text = recognize_with_main_model(image_path, get_dynamic_config, is_emoji=is_emoji)
+        return ('发送了表情包：' if is_emoji else '发送了图片：') + text
+    except Exception as exc:
+        logger.warning('主模型图片识别失败: %s', type(exc).__name__)
+        return '[图片内容暂时无法读取，请检查主模型是否支持图片及API配置；不要猜测图片内容]'
+    finally:
         can_send_messages = True
-        return recognized_text
 
-    except Exception as e:
-        logger.error(f"调用AI识别图片失败: {str(e)}", exc_info=True)
-        # 恢复向Deepseek发送消息队列
-        can_send_messages = True
-        return ""
 
 def handle_emoji_message(msg, who):
     global emoji_timer
@@ -1894,7 +1836,7 @@ def handle_wxauto_message(msg, who):
         if img_path:
             logger.info(f"开始识别图片/表情 - 用户 {username}: {img_path}")
             # 调用识别函数
-            recognized_text = recognize_image_with_moonshot(img_path, is_emoji=is_emoji)
+            recognized_text = recognize_image_with_main_config(img_path, is_emoji=is_emoji)
             # 使用识别结果或回退占位符更新 processed_content
             processed_content = recognized_text if recognized_text else ("[图片]" if not is_emoji else "[动画表情]")
             can_send_messages = True # 确保识别后可以发送消息

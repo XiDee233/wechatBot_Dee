@@ -17,3 +17,6 @@ filelock
 requests
 beautifulsoup4
 lxml
+
+# Local PDF attachment text extraction
+pypdf>=6.0,<7

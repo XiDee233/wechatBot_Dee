@@ -184,7 +184,7 @@ def validate_config_types(config_path):
                      'GROUP_CHAT_RESPONSE_PROBABILITY', 'ASSISTANT_MAX_TOKEN']
         
         # 检查应该是浮点数但被保存为字符串的配置项  
-        float_fields = ['TEMPERATURE', 'MOONSHOT_TEMPERATURE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
+        float_fields = ['TEMPERATURE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
                        'AVERAGE_TYPING_SPEED', 'RANDOM_TYPING_SPEED_MIN', 'RANDOM_TYPING_SPEED_MAX',
                        'ONLINE_API_TEMPERATURE', 'RESTART_INTERVAL_HOURS', 'ASSISTANT_TEMPERATURE']
         
@@ -381,7 +381,7 @@ def submit_config():
         new_values_for_config_py = {}
         
         # 处理API Key字段的特殊逻辑
-        api_key_fields = ['DEEPSEEK_API_KEY', 'MOONSHOT_API_KEY', 'ONLINE_API_KEY', 'ASSISTANT_API_KEY', 'FORUM_API_KEY']
+        api_key_fields = ['DEEPSEEK_API_KEY', 'ONLINE_API_KEY', 'ASSISTANT_API_KEY', 'FORUM_API_KEY']
         for field in api_key_fields:
             if field in request.form:
                 submitted_value = request.form[field].strip()
@@ -412,7 +412,7 @@ def submit_config():
                 users_whose_prompt_changed.append(nickname)
 
         boolean_fields = [
-            'ENABLE_THINKING', 'ENABLE_IMAGE_RECOGNITION', 'ENABLE_EMOJI_RECOGNITION',
+            'ENABLE_HISTORY_SEARCH', 'ENABLE_THINKING', 'ENABLE_IMAGE_RECOGNITION', 'ENABLE_EMOJI_RECOGNITION',
             'ENABLE_EMOJI_SENDING', 'ENABLE_AUTO_MESSAGE', 'ENABLE_MEMORY',
             'UPLOAD_MEMORY_TO_AI', 'ENABLE_LOGIN_PASSWORD', 'ENABLE_REMINDERS',
             'ALLOW_REMINDERS_IN_QUIET_TIME', 'USE_VOICE_CALL_FOR_REMINDERS',
@@ -444,7 +444,7 @@ def submit_config():
                 original_type_source = current_config_before_update[key_from_form]
                 if isinstance(original_type_source, bool):
                     new_values_for_config_py[key_from_form] = (value_from_form.lower() == 'true')
-                elif key_from_form in ["MIN_COUNTDOWN_HOURS", "MAX_COUNTDOWN_HOURS", "AVERAGE_TYPING_SPEED", "RANDOM_TYPING_SPEED_MIN", "RANDOM_TYPING_SPEED_MAX", "TEMPERATURE", "MOONSHOT_TEMPERATURE", "ONLINE_API_TEMPERATURE", "ASSISTANT_TEMPERATURE", "RESTART_INTERVAL_HOURS", "FORUM_TEMPERATURE"]: 
+                elif key_from_form in ["MIN_COUNTDOWN_HOURS", "MAX_COUNTDOWN_HOURS", "AVERAGE_TYPING_SPEED", "RANDOM_TYPING_SPEED_MIN", "RANDOM_TYPING_SPEED_MAX", "TEMPERATURE", "ONLINE_API_TEMPERATURE", "ASSISTANT_TEMPERATURE", "RESTART_INTERVAL_HOURS", "FORUM_TEMPERATURE"]:
                     try:
                         # 先确保值是字符串类型，然后进行转换
                         str_value = str(value_from_form).strip()
@@ -753,20 +753,17 @@ def quick_start():
                 api_key = api_key_raw
 
             keys_to_clear_for_non_weapis = [
-                'MOONSHOT_API_KEY', 'ONLINE_API_KEY',
-                'MOONSHOT_BASE_URL', 'ONLINE_BASE_URL',
-                'MOONSHOT_MODEL', 'ONLINE_MODEL'
+                'ONLINE_API_KEY',
+                'ONLINE_BASE_URL',
+                'ONLINE_MODEL'
             ]
 
             if api_provider == 'weapis':
                 if api_key:
                     new_values['DEEPSEEK_API_KEY'] = api_key
-                    new_values['MOONSHOT_API_KEY'] = api_key
                     new_values['ONLINE_API_KEY'] = api_key
                 new_values['DEEPSEEK_BASE_URL'] = 'https://vg.v1api.cc/v1'
-                new_values['MOONSHOT_BASE_URL'] = 'https://vg.v1api.cc/v1'
                 new_values['ONLINE_BASE_URL'] = 'https://vg.v1api.cc/v1'
-                new_values['MOONSHOT_MODEL'] = 'gpt-4o'
                 new_values['ONLINE_MODEL'] = 'net-gpt-4o-mini'
                 if not config.get('MODEL','').strip():
                     new_values['MODEL'] = 'deepseek-ai/DeepSeek-V3'
@@ -820,7 +817,6 @@ def quick_start():
         
         is_weapis_setup = (
             deepseek_url == 'https://vg.v1api.cc/v1' and
-            config.get('MOONSHOT_BASE_URL') == 'https://vg.v1api.cc/v1' and
             config.get('ONLINE_BASE_URL') == 'https://vg.v1api.cc/v1'
         )
 
@@ -947,7 +943,7 @@ def index():
             
             # 再次检查布尔字段，确保未勾选时为 False
             boolean_fields_from_editor = [
-                'ENABLE_THINKING', 'ENABLE_IMAGE_RECOGNITION', 'ENABLE_EMOJI_RECOGNITION',
+                'ENABLE_HISTORY_SEARCH', 'ENABLE_THINKING', 'ENABLE_IMAGE_RECOGNITION', 'ENABLE_EMOJI_RECOGNITION',
                 'ENABLE_EMOJI_SENDING', 'ENABLE_AUTO_MESSAGE', 'ENABLE_MEMORY',
                 'UPLOAD_MEMORY_TO_AI', 'ENABLE_LOGIN_PASSWORD', 'ENABLE_REMINDERS',
                 'ALLOW_REMINDERS_IN_QUIET_TIME', 'USE_VOICE_CALL_FOR_REMINDERS',
@@ -985,7 +981,7 @@ def index():
 
         # 创建一个隐藏API Key的配置副本用于显示
         display_config = config.copy()
-        api_key_fields = ['DEEPSEEK_API_KEY', 'MOONSHOT_API_KEY', 'ONLINE_API_KEY', 'ASSISTANT_API_KEY', 'FORUM_API_KEY']
+        api_key_fields = ['DEEPSEEK_API_KEY', 'ONLINE_API_KEY', 'ASSISTANT_API_KEY', 'FORUM_API_KEY']
         for field in api_key_fields:
             if field in display_config:
                 display_config[field] = hide_api_key(display_config[field])
@@ -3536,13 +3532,10 @@ def get_default_config():
         "DEEPSEEK_BASE_URL": 'https://vg.v1api.cc/v1',
         "MODEL": 'deepseek-v3-0324',
         "ENABLE_THINKING": False,
+        "ENABLE_HISTORY_SEARCH": True,
         "MAX_GROUPS": 5,
         "MAX_TOKEN": 2000,
         "TEMPERATURE": 1.1,
-        "MOONSHOT_API_KEY": '',
-        "MOONSHOT_BASE_URL": 'https://vg.v1api.cc/v1',
-        "MOONSHOT_MODEL": 'gpt-4o',
-        "MOONSHOT_TEMPERATURE": 0.8,
         "ENABLE_IMAGE_RECOGNITION": True,
         "ENABLE_EMOJI_RECOGNITION": True,
         "QUEUE_WAITING_TIME": 7,
@@ -3800,4 +3793,3 @@ if __name__ == '__main__':
     # 根据配置决定绑定地址
     #host = "0.0.0.0" if config.get('ENABLE_LOGIN_PASSWORD', False) else "127.0.0.1"
     app.run(host= "127.0.0.1", debug=False, port=PORT)
-    

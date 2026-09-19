@@ -34,6 +34,7 @@ pydantic==2.13.5
 pydantic_core==2.46.5
 PyGetWindow==0.0.9
 PyMsgBox==2.0.1
+pypdf==6.19.0
 pyperclip==1.11.0
 pypinyin==0.55.0
 PyRect==0.2.0
