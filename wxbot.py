@@ -433,7 +433,83 @@ class WeChat(_BaseWeChat):
             pass
         return who
 
+    def _send_filtered_mention(self, member, msg, who):
+        """Filter the WeChat mention popup before selecting the member.
+
+        The upstream coordinate implementation only scans the initial popup,
+        so members outside its first screen cannot be selected. This path uses
+        the already activated UIA tree, types the member name to filter the
+        popup, selects the unique result, then appends the final text.
+        """
+        target = self._display_name(who)
+        gui = self._gui
+        uia = gui._get_uia()
+        if uia is None:
+            return WxResponse.failure('微信UIA不可用，无法可靠筛选@成员')
+        if uia.current_chat() != target and not uia.open_chat(target):
+            return WxResponse.failure(f'无法打开群聊：{target}')
+        edit = uia._chat_input()
+        if edit is None:
+            return WxResponse.failure('群聊输入框不可用')
+
+        def clear_draft():
+            try:
+                edit.Click()
+                edit.SendKeys('{Ctrl}a{Delete}', waitTime=0.05)
+            except Exception:
+                pass
+
+        try:
+            clear_draft()
+            query = str(member).replace(' ', '')
+            edit.SendKeys('@', waitTime=0.05)
+            time.sleep(0.7)
+            edit.SendKeys(query, waitTime=0.05)
+            time.sleep(1.0)
+            import uiautomation as auto
+            popup = auto.WindowControl(
+                ClassName='mmui::XPopover',
+                Name='Weixin',
+                AutomationId='MentionPopover',
+            )
+            if not popup.Exists(2.0, 0.2):
+                clear_draft()
+                return WxResponse.failure(f'@成员筛选弹窗未出现：{member}')
+            list_control = popup.ListControl()
+            candidates = list_control.GetChildren() if list_control.Exists(1.0, 0.2) else []
+            visible = [item for item in candidates if (item.Name or '').strip()]
+            exact = [item for item in visible
+                     if (item.Name or '').replace(' ', '').casefold() == query.casefold()]
+            matches = exact or [item for item in visible
+                                if query.casefold() in (item.Name or '').replace(' ', '').casefold()]
+            if len(matches) != 1:
+                clear_draft()
+                names = [item.Name for item in visible[:8]]
+                return WxResponse.failure(
+                    f'@成员筛选结果不是唯一项：{member}；候选={names}'
+                )
+            matches[0].Click()
+            time.sleep(0.4)
+            if msg:
+                uia._paste_into(edit, msg, clear=False)
+            edit.SendKeys('{Enter}', waitTime=0.05)
+            return WxResponse.success(
+                '@成员消息已发送',
+                data={'member': member, 'content': msg},
+            )
+        except Exception as exc:
+            clear_draft()
+            log.exception('UIA筛选@成员失败: %s', exc)
+            return WxResponse.failure(f'@成员操作失败：{type(exc).__name__}')
+
     def SendMsg(self, msg, who=None, **kwargs):
+        at = kwargs.pop('at', None)
+        if at:
+            if isinstance(at, (list, tuple)):
+                if len(at) != 1:
+                    return WxResponse.failure('当前一次只支持@一位成员')
+                at = at[0]
+            return self._send_filtered_mention(at, msg, who)
         return super().SendMsg(msg, who=self._display_name(who), **kwargs)
 
     def SendFiles(self, filepath, who=None, **kwargs):

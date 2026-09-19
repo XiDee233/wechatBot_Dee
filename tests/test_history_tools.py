@@ -154,7 +154,15 @@ class HistoryTests(unittest.TestCase):
     def test_prepare_unique_group_mention(self):
         result = self.session.prepare_mention('甲')
         self.assertEqual(result['status'], 'prepared')
-        self.assertEqual(self.session.pending_mention, '甲')
+        self.assertEqual(self.session.pending_mention['member'], '甲')
+
+    def test_mention_prefers_wechat_nickname_over_local_remark(self):
+        self.db.members.append({
+            'username': 'wxid_bro', 'nick_name': 'b哥', 'remark': '谢海斌'
+        })
+        result = self.session.prepare_mention('谢海斌')
+        self.assertEqual(result['status'], 'prepared')
+        self.assertEqual(self.session.pending_mention['member'], 'b哥')
 
 class ToolLoopTests(unittest.TestCase):
     def test_tool_call_reasoning_and_evidence(self):
@@ -323,5 +331,39 @@ class DocumentTests(unittest.TestCase):
         self.assertIsNone(bot.GetHistorySession('unknown'))
         self.assertIsNone(bot.GetHistorySession('private'))
         self.assertEqual(bot.GetHistorySession('group').chat_id, GROUP)
+
+
+class MentionDriverTests(unittest.TestCase):
+    def test_member_name_filters_popup_before_selection(self):
+        from wxbot import WeChat
+        bot = WeChat.__new__(WeChat)
+        bot._db = Mock()
+        bot._db.get_nickname.return_value = ''
+        edit = Mock()
+        candidate = Mock()
+        candidate.Name = 'So_yah'
+        list_control = Mock()
+        list_control.Exists.return_value = True
+        list_control.GetChildren.return_value = [candidate]
+        popup = Mock()
+        popup.Exists.return_value = True
+        popup.ListControl.return_value = list_control
+        uia = Mock()
+        uia.current_chat.return_value = '测试群'
+        uia._chat_input.return_value = edit
+        uia._win.WindowControl.return_value = popup
+        gui = Mock()
+        gui._get_uia.return_value = uia
+        bot._gui = gui
+
+        with patch('uiautomation.WindowControl', return_value=popup):
+            result = bot._send_filtered_mention('So_yah', '找你有事', '测试群')
+
+        self.assertTrue(result)
+        edit.SendKeys.assert_any_call('@', waitTime=0.05)
+        edit.SendKeys.assert_any_call('So_yah', waitTime=0.05)
+        candidate.Click.assert_called_once()
+        uia._paste_into.assert_called_once_with(edit, '找你有事', clear=False)
+        edit.SendKeys.assert_any_call('{Enter}', waitTime=0.05)
 
 if __name__ == '__main__': unittest.main()

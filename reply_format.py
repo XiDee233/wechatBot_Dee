@@ -21,3 +21,23 @@ def normalize_reply(text):
             seen = True
         result.append(line)
     return ''.join(result)
+
+
+def strip_manual_mention(text, aliases):
+    """Remove a model-written @ token when the sender will create a real one."""
+    if not text:
+        return text
+    prefix_match = re.match(r'^(\s*「[^」\n]{1,40}[:：]」\s*)', text)
+    prefix = prefix_match.group(1) if prefix_match else ''
+    body = text[len(prefix):]
+    if not body.startswith('@'):
+        return text
+    body = re.sub(r'^@[^\s，,。:：]+[\s，,。:：]*', '', body, count=1)
+    for alias in sorted({str(item).strip() for item in aliases if str(item).strip()},
+                        key=len, reverse=True):
+        if body.casefold().startswith(alias.casefold()):
+            tail = body[len(alias):]
+            if not tail or tail[0].isspace() or tail[0] in '，,。:：':
+                body = tail.lstrip(' \t，,。:：')
+                break
+    return prefix + body

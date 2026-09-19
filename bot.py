@@ -35,7 +35,7 @@ os.environ["PROJECT_NAME"] = 'iwyxdxl/WeChatBot_WXAUTO_SE'
 # 消息收发由 wxbot 兼容层驱动（wechatauto，适配微信 4.x 自绘渲染）
 from wxbot import WeChat
 from history_tools import complete_with_history
-from reply_format import normalize_reply
+from reply_format import normalize_reply, strip_manual_mention
 from vision import (
     recognize_image as recognize_with_main_model,
     recognize_images as recognize_images_with_main_model,
@@ -1022,7 +1022,7 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=0, is_summar
                     with pending_reply_actions_lock:
                         pending_reply_actions[user_id] = {
                             'type': 'mention',
-                            'member': history_session.pending_mention,
+                            **history_session.pending_mention,
                         }
             else:
                 response = client.chat.completions.create(messages=messages_to_send, **options)
@@ -2197,6 +2197,10 @@ def send_reply(user_id, sender_name, username, original_merged_message, reply, i
                         send_kwargs = {}
                         if reply_action and reply_action.get('type') == 'mention':
                             send_kwargs['at'] = reply_action['member']
+                            content = strip_manual_mention(
+                                content,
+                                reply_action.get('aliases', []),
+                            )
                         send_result = wx.SendMsg(
                             msg=content,
                             who=user_id,

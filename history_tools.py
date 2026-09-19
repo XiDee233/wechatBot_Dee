@@ -259,10 +259,16 @@ class HistorySession:
         wanted = str(member or '').strip().lstrip('@')
         if not wanted:
             return {'status': 'member_not_found', 'member': wanted, 'candidates': []}
-        names = self._member_names()
-        exact = [uid for uid, aliases in names.items()
+        members = self.db.get_group_members(self.chat_id)
+        candidates = []
+        for item in members:
+            aliases = [str(item.get(key) or '').strip()
+                       for key in ('username', 'nick_name', 'remark')]
+            aliases = [alias for alias in aliases if alias]
+            candidates.append((item, aliases))
+        exact = [(item, aliases) for item, aliases in candidates
                  if wanted.casefold() in {alias.casefold() for alias in aliases}]
-        partial = [uid for uid, aliases in names.items()
+        partial = [(item, aliases) for item, aliases in candidates
                    if any(wanted.casefold() in alias.casefold() for alias in aliases)]
         matches = exact or partial
         if len(matches) != 1:
@@ -270,14 +276,17 @@ class HistorySession:
                 'status': 'ambiguous_member' if matches else 'member_not_found',
                 'member': wanted,
                 'candidates': [
-                    {'id': uid, 'names': sorted(names[uid])}
-                    for uid in matches[:10]
+                    {'id': item['username'], 'names': aliases}
+                    for item, aliases in matches[:10]
                 ],
             }
-        uid = matches[0]
-        display = next((alias for alias in names[uid] if alias != uid), uid)
-        return {'status': 'ok', 'id': uid, 'display_name': display,
-                'aliases': sorted(names[uid])}
+        item, aliases = matches[0]
+        # 微信 @ 弹窗优先显示群昵称/微信昵称，而不是本机通讯录备注。
+        display = (str(item.get('nick_name') or '').strip()
+                   or str(item.get('remark') or '').strip()
+                   or item['username'])
+        return {'status': 'ok', 'id': item['username'],
+                'display_name': display, 'aliases': aliases}
 
     def recent_context(self, lookback_minutes=60, limit=30, sender='', keyword='', kind='all'):
         if type(lookback_minutes) is not int or not 1 <= lookback_minutes <= 10080:
@@ -387,7 +396,10 @@ class HistorySession:
         resolved = self._resolve_member(member)
         if resolved['status'] != 'ok':
             return resolved
-        self.pending_mention = resolved['display_name']
+        self.pending_mention = {
+            'member': resolved['display_name'],
+            'aliases': resolved['aliases'],
+        }
         return {'status': 'prepared', 'member': resolved['display_name'],
                 'note': '最终回复将作为一条真实的微信群@消息发送。'}
 
