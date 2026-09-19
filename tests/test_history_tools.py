@@ -156,13 +156,13 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(result['status'], 'prepared')
         self.assertEqual(self.session.pending_mention['member'], '甲')
 
-    def test_mention_prefers_wechat_nickname_over_local_remark(self):
+    def test_mention_preserves_explicit_user_name(self):
         self.db.members.append({
             'username': 'wxid_bro', 'nick_name': 'b哥', 'remark': '谢海斌'
         })
         result = self.session.prepare_mention('谢海斌')
         self.assertEqual(result['status'], 'prepared')
-        self.assertEqual(self.session.pending_mention['member'], 'b哥')
+        self.assertEqual(self.session.pending_mention['member'], '谢海斌')
 
 class ToolLoopTests(unittest.TestCase):
     def test_tool_call_reasoning_and_evidence(self):

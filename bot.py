@@ -35,7 +35,11 @@ os.environ["PROJECT_NAME"] = 'iwyxdxl/WeChatBot_WXAUTO_SE'
 # 消息收发由 wxbot 兼容层驱动（wechatauto，适配微信 4.x 自绘渲染）
 from wxbot import WeChat
 from history_tools import complete_with_history
-from reply_format import normalize_reply, strip_manual_mention
+from reply_format import (
+    extract_manual_mention,
+    normalize_reply,
+    strip_manual_mention,
+)
 from vision import (
     recognize_image as recognize_with_main_model,
     recognize_images as recognize_images_with_main_model,
@@ -1018,12 +1022,6 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=0, is_summar
                     ),
                     **options,
                 )
-                if history_session.pending_mention:
-                    with pending_reply_actions_lock:
-                        pending_reply_actions[user_id] = {
-                            'type': 'mention',
-                            **history_session.pending_mention,
-                        }
             else:
                 response = client.chat.completions.create(messages=messages_to_send, **options)
 
@@ -1040,6 +1038,23 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=0, is_summar
                     if content and "[image]" not in content and content != "ext":
                         filtered_content = strip_before_thought_tags(content)
                         if filtered_content:
+                            reply_action = (
+                                history_session.pending_mention
+                                if history_session is not None else None
+                            )
+                            if reply_action is None:
+                                manual_target = extract_manual_mention(filtered_content)
+                                if manual_target:
+                                    reply_action = {
+                                        'member': manual_target,
+                                        'aliases': [manual_target],
+                                    }
+                            if reply_action is not None:
+                                with pending_reply_actions_lock:
+                                    pending_reply_actions[user_id] = {
+                                        'type': 'mention',
+                                        **reply_action,
+                                    }
                             return filtered_content
             else:
                 # 记录错误日志 - 无选择项

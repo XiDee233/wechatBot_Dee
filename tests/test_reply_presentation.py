@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import Mock
-from reply_format import normalize_reply
+from reply_format import extract_manual_mention, normalize_reply
 from history_tools import query_notice
 
 class ReplyPresentationTests(unittest.TestCase):
@@ -19,5 +19,12 @@ class ReplyPresentationTests(unittest.TestCase):
         self.assertNotIn('没有找到', reply)
         self.assertNotIn('重新登录', reply)
         self.assertNotIn('稍后', reply)
+
+    def test_leading_plain_at_is_promoted_to_action(self):
+        self.assertEqual(
+            extract_manual_mention('「AI彬哥:」@吴开森 行，按你给的名字来。'),
+            '吴开森',
+        )
+        self.assertIsNone(extract_manual_mention('我只是讨论一下@吴开森'))
 
 if __name__ == '__main__': unittest.main()

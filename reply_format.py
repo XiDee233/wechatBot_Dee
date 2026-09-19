@@ -41,3 +41,13 @@ def strip_manual_mention(text, aliases):
                 body = tail.lstrip(' \t，,。:：')
                 break
     return prefix + body
+
+
+def extract_manual_mention(text):
+    """Return a leading model-written @ target so it can become a real action."""
+    if not text:
+        return None
+    prefix = re.match(r'^\s*「[^」\n]{1,40}[:：]」\s*', text)
+    body = text[prefix.end():] if prefix else text.lstrip()
+    match = re.match(r'^@([^\s，,。:：]{1,100})', body)
+    return match.group(1) if match else None
