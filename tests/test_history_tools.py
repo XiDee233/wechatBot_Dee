@@ -340,6 +340,7 @@ class MentionDriverTests(unittest.TestCase):
         bot._db = Mock()
         bot._db.get_nickname.return_value = ''
         edit = Mock()
+        edit.GetValuePattern.return_value.Value = ''
         candidate = Mock()
         candidate.Name = 'So_yah'
         list_control = Mock()

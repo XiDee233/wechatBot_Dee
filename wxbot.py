@@ -512,22 +512,43 @@ class WeChat(_BaseWeChat):
                 return WxResponse.failure(f'@成员筛选弹窗未出现：{member}')
             list_control = popup.ListControl()
             candidates = list_control.GetChildren() if list_control.Exists(1.0, 0.2) else []
-            visible = [item for item in candidates if (item.Name or '').strip()]
-            exact = [item for item in visible
-                     if (item.Name or '').replace(' ', '').casefold() == query.casefold()]
-            matches = exact or [item for item in visible
-                                if query.casefold() in (item.Name or '').replace(' ', '').casefold()]
+            # The filtered popover is live-updating. Re-reading Name from the
+            # same COM control can invalidate the reference. A single result
+            # is already unambiguous, so click it without another property read.
+            if len(candidates) == 1:
+                matches = [candidates[0]]
+                visible_names = [query]
+            else:
+                snapshots = []
+                for item in candidates:
+                    try:
+                        name = (item.Name or '').strip()
+                    except Exception:
+                        continue
+                    if name:
+                        snapshots.append((item, name))
+                exact = [item for item, name in snapshots
+                         if name.replace(' ', '').casefold() == query.casefold()]
+                matches = exact or [item for item, name in snapshots
+                                    if query.casefold() in name.replace(' ', '').casefold()]
+                visible_names = [name for _item, name in snapshots[:8]]
             if len(matches) != 1:
                 clear_draft()
-                names = [item.Name for item in visible[:8]]
                 return WxResponse.failure(
-                    f'@成员筛选结果不是唯一项：{member}；候选={names}'
+                    f'@成员筛选结果不是唯一项：{member}；候选={visible_names}'
                 )
             matches[0].Click()
             time.sleep(0.4)
             if msg:
                 uia._paste_into(edit, msg, clear=False)
             edit.SendKeys('{Enter}', waitTime=0.05)
+            time.sleep(0.8)
+            try:
+                remaining = edit.GetValuePattern().Value
+            except Exception:
+                remaining = ''
+            if str(remaining or '').replace('￼', '').strip():
+                return WxResponse.failure('@成员已选择，但回车后输入框未清空，消息未确认发送')
             return WxResponse.success(
                 '@成员消息已发送',
                 data={'member': member, 'content': msg},
