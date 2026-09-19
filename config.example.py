@@ -163,3 +163,5 @@ ENABLE_THINKING = False
 
 # On-demand local history and attachments for the current monitored group
 ENABLE_HISTORY_SEARCH = True
+AGENT_MAX_STEPS = 10
+AGENT_DOOM_LOOP_THRESHOLD = 3

@@ -330,7 +330,7 @@ class WeChat(_BaseWeChat):
         super().__init__(*args, **kwargs)
         self._media = MediaDownloader(self._db)
 
-    def GetHistorySession(self, nickname, vision=None):
+    def GetHistorySession(self, nickname, vision=None, vision_batch=None):
         """Bind tool access to the already registered chat, never model input."""
         entry = self.listen.get(nickname)
         if not entry:
@@ -339,7 +339,12 @@ class WeChat(_BaseWeChat):
         if not str(chat_id).endswith('@chatroom'):
             return None
         from history_tools import HistorySession
-        return HistorySession(self._db, chat_id, vision=vision)
+        return HistorySession(
+            self._db,
+            chat_id,
+            vision=vision,
+            vision_batch=vision_batch,
+        )
 
     # ------------------------------------------------------------- 消息监听
 

@@ -36,7 +36,10 @@ os.environ["PROJECT_NAME"] = 'iwyxdxl/WeChatBot_WXAUTO_SE'
 from wxbot import WeChat
 from history_tools import complete_with_history
 from reply_format import normalize_reply
-from vision import recognize_image as recognize_with_main_model
+from vision import (
+    recognize_image as recognize_with_main_model,
+    recognize_images as recognize_images_with_main_model,
+)
 from wechatauto.param import WxParam
 WxParam.ENABLE_FILE_LOGGER = False
 WxParam.FORCE_MESSAGE_XBIAS = True
@@ -517,6 +520,12 @@ client = OpenAI(
     base_url=DEEPSEEK_BASE_URL
 )
 
+# Agent tools can prepare one structured action for the final reply. The
+# action is consumed once by send_reply, so tool exploration never emits
+# intermediate WeChat messages.
+pending_reply_actions = {}
+pending_reply_actions_lock = threading.Lock()
+
 #初始化在线 AI 客户端 (如果启用)
 online_client: Optional[OpenAI] = None
 if ENABLE_ONLINE_API:
@@ -989,10 +998,32 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=0, is_summar
             history_session = None
             if allow_history and get_dynamic_config('ENABLE_HISTORY_SEARCH', True):
                 history_session = wx.GetHistorySession(
-                    user_id, vision=lambda path: recognize_with_main_model(path, get_dynamic_config))
+                    user_id,
+                    vision=lambda path: recognize_with_main_model(
+                        path, get_dynamic_config
+                    ),
+                    vision_batch=lambda paths, question, labels:
+                        recognize_images_with_main_model(
+                            paths, question, labels, get_dynamic_config
+                        ),
+                )
             if history_session is not None:
                 response = complete_with_history(
-                    client.with_options(max_retries=0).chat.completions.create, messages_to_send, history_session, **options)
+                    client.with_options(max_retries=0).chat.completions.create,
+                    messages_to_send,
+                    history_session,
+                    max_steps=int(get_dynamic_config('AGENT_MAX_STEPS', 10)),
+                    doom_loop_threshold=int(
+                        get_dynamic_config('AGENT_DOOM_LOOP_THRESHOLD', 3)
+                    ),
+                    **options,
+                )
+                if history_session.pending_mention:
+                    with pending_reply_actions_lock:
+                        pending_reply_actions[user_id] = {
+                            'type': 'mention',
+                            'member': history_session.pending_mention,
+                        }
             else:
                 response = client.chat.completions.create(messages=messages_to_send, **options)
 
@@ -2041,9 +2072,12 @@ def send_reply(user_id, sender_name, username, original_merged_message, reply, i
         is_sending_message = True  # <<< 在发送前设置标志
         logger.info(f"准备向 {sender_name} (用户ID: {user_id}) 发送消息")
 
+        with pending_reply_actions_lock:
+            reply_action = pending_reply_actions.pop(user_id, None)
+
         # --- 表情包发送逻辑 ---
         emoji_path = None
-        if ENABLE_EMOJI_SENDING and not is_system_message:
+        if ENABLE_EMOJI_SENDING and not is_system_message and not reply_action:
             emotion = is_emoji_request(reply)
             if emotion:
                 logger.info(f"触发表情请求（概率{EMOJI_SENDING_PROBABILITY}%） 用户 {user_id}，情绪: {emotion}")
@@ -2056,7 +2090,7 @@ def send_reply(user_id, sender_name, username, original_merged_message, reply, i
             reply = remove_timestamps(reply)
             if REMOVE_PARENTHESES:
                 reply = remove_parentheses_and_content(reply)
-        parts = split_message_with_context(reply)
+        parts = [reply] if reply_action else split_message_with_context(reply)
 
         if not parts:
             logger.warning(f"回复消息在分割/清理后为空，无法发送给 {user_id}。")
@@ -2152,14 +2186,22 @@ def send_reply(user_id, sender_name, username, original_merged_message, reply, i
                     logger.error(f"检测到异常内容 '{content_clean}'，拒绝发送给 {user_id}")
                     continue
                 
-                # 文本消息发送三次重试
+                # 普通文本保留原发送逻辑；结构化动作只执行一次，避免重复@。
                 success = False
-                for attempt in range(3):
+                max_send_attempts = 1 if reply_action else 3
+                for attempt in range(max_send_attempts):
                     try:
                         time.sleep(random.uniform(1.0, 1.5))
                         logger.info(f"[DEBUG] 准备发送内容给 {user_id}: {repr(content[:100])}")
                         time.sleep(0.15)  # 短暂延时，让微信窗口稳定
-                        send_result = wx.SendMsg(msg=content, who=user_id)
+                        send_kwargs = {}
+                        if reply_action and reply_action.get('type') == 'mention':
+                            send_kwargs['at'] = reply_action['member']
+                        send_result = wx.SendMsg(
+                            msg=content,
+                            who=user_id,
+                            **send_kwargs,
+                        )
                         logger.info(f"[DEBUG] SendMsg返回结果: {send_result}, 内容长度: {len(content)}")
                         if send_result:
                             logger.info(f"分段回复 {idx+1}/{len(message_actions)} 给 {sender_name}: {content[:50]}...")
@@ -2172,11 +2214,14 @@ def send_reply(user_id, sender_name, username, original_merged_message, reply, i
                     except Exception as e:
                         logger.warning(f"发送文本消息异常，尝试第 {attempt + 1} 次: {str(e)}")
                     
-                    if attempt < 2:  # 不是最后一次尝试
+                    if attempt < max_send_attempts - 1:
                         time.sleep(0.5)  # 短暂等待后重试
                 
                 if not success:
-                    logger.error(f"文本消息发送失败，已重试3次: {content[:50]}...")
+                    logger.error(
+                        f"文本消息发送失败（尝试{max_send_attempts}次）: "
+                        f"{content[:50]}..."
+                    )
 
             # 处理分段延迟（仅当下一动作为文本时计算）
             if idx < len(message_actions) - 1:

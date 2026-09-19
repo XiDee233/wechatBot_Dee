@@ -109,6 +109,53 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(self.session.execute('search_group_history', {'days_ago': 1})['status'], 'unavailable')
         self.db._run_msg_query.assert_called_once()
 
+    def test_unknown_date_text_search_with_context_and_cursor(self):
+        self.db.add(40, '之前说的脆皮鸭是68元', local_id=1)
+        self.db.add(40, '要两只', sender=4, local_id=2)
+        result = self.session.search_text(
+            terms=['鸭', '价格', '多少钱'],
+            match_mode='any',
+            context_size=1,
+        )
+        self.assertEqual(result['status'], 'ok')
+        self.assertIn('脆皮鸭', result['results'][0]['text'])
+        self.assertIn('鸭', result['results'][0]['matched_terms'])
+        self.assertIsInstance(result['next_cursor'], int)
+        self.assertTrue(result['results'][0]['context'])
+
+    def test_word_attachment_without_known_date(self):
+        xml = ('<msg><appmsg><title>采购方案.docx</title><type>6</type>'
+               '<appattach><filemd5>0123456789abcdef0123456789abcdef</filemd5>'
+               '</appattach></appmsg></msg>')
+        self.db.add(120, xml, kind=49)
+        result = self.session.search_attachments(
+            kind='file', extensions=['doc', 'docx']
+        )
+        self.assertEqual(result['status'], 'ok')
+        self.assertEqual(result['attachments'][0]['filename'], '采购方案.docx')
+        self.assertEqual(result['attachments'][0]['time'][:10], '2026-05-22')
+
+    def test_batch_image_inspection_preserves_dates(self):
+        self.db.add(20, '[图片]', kind=3, local_id=1)
+        self.db.add(30, '[图片]', kind=3, local_id=2)
+        vision = Mock(return_value='H2 是黄色鸭子，H1 不是。')
+        session = HistorySession(
+            self.db, GROUP, now=NOW, vision_batch=vision
+        )
+        found = session.search_attachments(kind='image', limit=8)
+        ids = [item['id'] for item in found['attachments']]
+        with patch.object(session, '_download_history_image',
+                          side_effect=['one.png', 'two.png']):
+            result = session.inspect_images(ids, '哪张是黄色鸭子')
+        self.assertEqual(result['status'], 'ok')
+        self.assertIn('黄色鸭子', result['analysis'])
+        self.assertEqual(vision.call_args.args[2], ids)
+
+    def test_prepare_unique_group_mention(self):
+        result = self.session.prepare_mention('甲')
+        self.assertEqual(result['status'], 'prepared')
+        self.assertEqual(self.session.pending_mention, '甲')
+
 class ToolLoopTests(unittest.TestCase):
     def test_tool_call_reasoning_and_evidence(self):
         from openai.types.chat import ChatCompletion
@@ -124,6 +171,71 @@ class ToolLoopTests(unittest.TestCase):
         self.assertIn('9月9日', result.choices[0].message.content)
         self.assertNotIn('依据本机', result.choices[0].message.content)
         self.assertEqual(create.call_args.kwargs['model'], 'deepseek-chat')
+        db.close()
+
+    def test_agent_can_refine_unknown_date_search_before_final_answer(self):
+        from openai.types.chat import ChatCompletion
+        first = ChatCompletion.model_validate({
+            'id': '1', 'created': 1, 'model': 'test',
+            'object': 'chat.completion',
+            'choices': [{'index': 0, 'finish_reason': 'tool_calls',
+                         'message': {'role': 'assistant', 'content': None,
+                                     'tool_calls': [{'id': 't1', 'type': 'function',
+                                                     'function': {'name': 'search_group_history_text',
+                                                                  'arguments': '{"terms":["鸭"],"match_mode":"any"}'}}]}}],
+        })
+        second = ChatCompletion.model_validate({
+            'id': '2', 'created': 2, 'model': 'test',
+            'object': 'chat.completion',
+            'choices': [{'index': 0, 'finish_reason': 'tool_calls',
+                         'message': {'role': 'assistant', 'content': None,
+                                     'tool_calls': [{'id': 't2', 'type': 'function',
+                                                     'function': {'name': 'search_group_history_text',
+                                                                  'arguments': '{"terms":["脆皮鸭","68元"],"match_mode":"any"}'}}]}}],
+        })
+        final = ChatCompletion.model_validate({
+            'id': '3', 'created': 3, 'model': 'test',
+            'object': 'chat.completion',
+            'choices': [{'index': 0, 'finish_reason': 'stop',
+                         'message': {'role': 'assistant',
+                                     'content': '之前说的是脆皮鸭，68元。'}}],
+        })
+        db = FakeDB()
+        db.add(40, '脆皮鸭是68元')
+        create = Mock(side_effect=[first, second, final])
+        result = complete_with_history(
+            create,
+            [{'role': 'user', 'content': '之前那个什么鸭多少钱？'}],
+            HistorySession(db, GROUP, now=NOW),
+            model='deepseek-chat',
+            max_steps=10,
+        )
+        self.assertEqual(create.call_count, 3)
+        self.assertIn('68元', result.choices[0].message.content)
+        second_request = create.call_args_list[1].kwargs['messages']
+        self.assertEqual(json.loads(second_request[-1]['content'])['status'], 'ok')
+        db.close()
+
+    def test_repeated_identical_tool_call_stops_without_retry(self):
+        from openai.types.chat import ChatCompletion
+        repeated = ChatCompletion.model_validate({
+            'id': '1', 'created': 1, 'model': 'test',
+            'object': 'chat.completion',
+            'choices': [{'index': 0, 'finish_reason': 'tool_calls',
+                         'message': {'role': 'assistant', 'content': None,
+                                     'tool_calls': [{'id': 'same', 'type': 'function',
+                                                     'function': {'name': 'search_recent_group_history',
+                                                                  'arguments': '{"lookback_minutes":60}'}}]}}],
+        })
+        db = FakeDB()
+        create = Mock(side_effect=[repeated, repeated, repeated])
+        with self.assertRaises(RuntimeError):
+            complete_with_history(
+                create, [{'role': 'user', 'content': '看看刚才'}],
+                HistorySession(db, GROUP, now=NOW), model='deepseek-chat',
+                doom_loop_threshold=3,
+            )
+        self.assertEqual(create.call_count, 3)
         db.close()
 
 class VisionTests(unittest.TestCase):
@@ -142,6 +254,32 @@ class VisionTests(unittest.TestCase):
             self.assertEqual(create.call_args.kwargs['model'], 'deepseek-chat')
             self.assertEqual(create.call_args.kwargs['extra_body']['thinking']['type'], 'disabled')
             self.assertTrue(create.call_args.kwargs['messages'][0]['content'][1]['image_url']['url'].startswith('data:image/png;base64,'))
+
+    def test_batch_vision_uses_main_model(self):
+        from PIL import Image
+        from vision import recognize_images
+        folder = ROOT / 'history_cache' / 'batch-vision'
+        folder.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for name, color in [('one.png', 'yellow'), ('two.png', 'blue')]:
+            path = folder / name
+            Image.new('RGB', (20, 20), color).save(path)
+            paths.append(path)
+        cfg = {'MODEL': 'deepseek-chat', 'DEEPSEEK_API_KEY': 'test-key',
+               'DEEPSEEK_BASE_URL': 'https://api.deepseek.com',
+               'ENABLE_THINKING': False, 'TEMPERATURE': 0.3,
+               'MAX_TOKEN': 2000}
+        with patch('vision.OpenAI') as api:
+            create = api.return_value.__enter__.return_value.chat.completions.create
+            create.return_value = SimpleNamespace(
+                choices=[SimpleNamespace(
+                    message=SimpleNamespace(content='H1是黄色，H2是蓝色')
+                )]
+            )
+            answer = recognize_images(paths, '找黄色鸭子', ['H1', 'H2'], cfg.get)
+        self.assertIn('H1', answer)
+        blocks = create.call_args.kwargs['messages'][0]['content']
+        self.assertEqual(len([block for block in blocks if block['type'] == 'image_url']), 2)
 
 class DocumentTests(unittest.TestCase):
     def test_office_text_and_size_limits(self):

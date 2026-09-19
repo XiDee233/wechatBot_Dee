@@ -3698,6 +3698,16 @@ document.getElementById('oneKeyDiagnosticButton').addEventListener('click', asyn
                         <small>例如“10天前甲说了啥？”“昨天甲发的图片是什么？”“总结上周的方案文件”。只查当前群本机记录；查到的片段或附件内容交给当前主模型处理。单次最多31天、80条结果、3个附件；本机未同步或未下载的内容无法读取。</small>
                     </div>
                     <div class="form-group">
+                        <label>Agent 最大执行步骤:</label>
+                        <input type="number" min="3" max="20" step="1" name="AGENT_MAX_STEPS" value="{{ config.AGENT_MAX_STEPS }}">
+                        <small>一次回复中最多进行多少轮“思考 → 调用工具 → 查看结果”。建议 10；复杂的跨时间搜索和批量找图会使用更多步骤。</small>
+                    </div>
+                    <div class="form-group">
+                        <label>重复工具调用停止阈值:</label>
+                        <input type="number" min="2" max="5" step="1" name="AGENT_DOOM_LOOP_THRESHOLD" value="{{ config.AGENT_DOOM_LOOP_THRESHOLD }}">
+                        <small>相同工具和完全相同参数连续出现到此次数时停止，避免 Agent 原地循环。不会自动重试失败工具。</small>
+                    </div>
+                    <div class="form-group">
                         <div class="switch-container">
                             <div class="switch-item">
                                 <label>启用图片识别功能</label>

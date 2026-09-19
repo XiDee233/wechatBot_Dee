@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 import random
 import re
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
@@ -26,6 +27,8 @@ class MessageFormattingTests(unittest.TestCase):
                        time=SimpleNamespace(time=lambda: 0, sleep=lambda _: None),
                        is_sending_message=False, ENABLE_EMOJI_SENDING=False,
                        ENABLE_MEMORY=False, REMOVE_PARENTHESES=True, wx=self.wx,
+                       pending_reply_actions={},
+                       pending_reply_actions_lock=threading.Lock(),
                        get_dynamic_config=lambda key, default: self.enabled)
         exec(compile(subset, 'bot.py', 'exec'), self.ns)
 
@@ -53,6 +56,18 @@ class MessageFormattingTests(unittest.TestCase):
     def test_empty_and_indentation(self):
         self.assertEqual(self.ns['split_message_with_context'](' \n'), [])
         self.assertEqual(self.ns['remove_timestamps']('正文\n    保留缩进'), '正文\n    保留缩进')
+
+    def test_prepared_mention_is_one_real_at_message(self):
+        self.ns['pending_reply_actions']['test-group'] = {
+            'type': 'mention', 'member': '甲'
+        }
+        self.ns['send_reply'](
+            'test-group', 'test', 'test', '', '「AI彬哥:」找你有事。'
+        )
+        self.wx.SendMsg.assert_called_once_with(
+            msg='「AI彬哥:」找你有事。', who='test-group', at='甲'
+        )
+        self.assertNotIn('test-group', self.ns['pending_reply_actions'])
 
 if __name__ == '__main__':
     unittest.main()

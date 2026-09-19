@@ -178,7 +178,9 @@ def validate_config_types(config_path):
         issues = []
         
         # 检查应该是整数但被保存为字符串的配置项
-        int_fields = ['MAX_GROUPS', 'MAX_TOKEN', 'QUEUE_WAITING_TIME', 'EMOJI_SENDING_PROBABILITY', 
+        int_fields = ['MAX_GROUPS', 'MAX_TOKEN', 'QUEUE_WAITING_TIME',
+                      'EMOJI_SENDING_PROBABILITY', 'AGENT_MAX_STEPS',
+                      'AGENT_DOOM_LOOP_THRESHOLD',
                      'MAX_MESSAGE_LOG_ENTRIES', 'MAX_MEMORY_NUMBER', 'PORT', 'ONLINE_API_MAX_TOKEN',
                      'REQUESTS_TIMEOUT', 'MAX_WEB_CONTENT_LENGTH', 'RESTART_INACTIVITY_MINUTES',
                      'GROUP_CHAT_RESPONSE_PROBABILITY', 'ASSISTANT_MAX_TOKEN']
@@ -3533,6 +3535,8 @@ def get_default_config():
         "MODEL": 'deepseek-v3-0324',
         "ENABLE_THINKING": False,
         "ENABLE_HISTORY_SEARCH": True,
+        "AGENT_MAX_STEPS": 10,
+        "AGENT_DOOM_LOOP_THRESHOLD": 3,
         "MAX_GROUPS": 5,
         "MAX_TOKEN": 2000,
         "TEMPERATURE": 1.1,
