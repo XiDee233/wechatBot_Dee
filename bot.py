@@ -2104,9 +2104,11 @@ def send_reply(user_id, sender_name, username, original_merged_message, reply, i
                 emoji_path = send_emoji(emotion)
 
         # --- 文本消息处理 ---
-        reply = remove_timestamps(reply)
-        if REMOVE_PARENTHESES:
-            reply = remove_parentheses_and_content(reply)
+        # Preserve code syntax and indentation; prose cleanup can corrupt code.
+        if not contains_code_block(reply):
+            reply = remove_timestamps(reply)
+            if REMOVE_PARENTHESES:
+                reply = remove_parentheses_and_content(reply)
         parts = split_message_with_context(reply)
 
         if not parts:
@@ -2247,18 +2249,23 @@ def send_reply(user_id, sender_name, username, original_merged_message, reply, i
     finally:
         is_sending_message = False
 
+def contains_code_block(text):
+    return '```' in text or bool(re.search(r'(?m)^[ \t]*~{3,}', text))
+
+
 def split_message_with_context(text):
+    """Send whole replies by default; code blocks never use legacy splitting.
+
+    When splitting is enabled, prose retains the legacy separator/action rules.
+    With splitting disabled, newlines, escapes, dollar signs and action-like
+    literals are kept exactly as generated in a single text message.
     """
-    将消息文本分割为多个部分，处理换行符、转义字符、$符号和[tickle]/[tickle_self]/[recall]标记。
-    处理文本中的换行符和转义字符，并根据配置决定是否分割。
-    无论配置如何，都会以$作为分隔符分割消息。
-    特别支持[tickle]、[tickle_self]和[recall]作为独立消息分隔。
-    
-    特别说明：
-    - 每个$都会作为独立分隔符，所以"Hello$World$Python"会分成三部分
-    - 连续的$$会产生空部分，这些会被自动跳过
-    - [tickle]、[tickle_self]和[recall]会被分隔成独立的消息段
-    """
+    if not text or not text.strip():
+        return []
+    split_enabled = get_dynamic_config('SEPARATE_ROW_SYMBOLS', False)
+    if not split_enabled or contains_code_block(text):
+        return [text]
+
     result_parts = []
     
     # 首先处理[tickle]、[tickle_self]和[recall]标记，将其分隔成独立部分
@@ -2287,7 +2294,7 @@ def split_message_with_context(text):
                 continue
                 
             # 应用原有的分隔逻辑
-            if SEPARATE_ROW_SYMBOLS:
+            if split_enabled:
                 main_parts = re.split(r'(?:\\{3,}|\n)', dollar_part)
             else:
                 main_parts = re.split(r'\\{3,}', dollar_part)
@@ -2385,8 +2392,8 @@ def remove_timestamps(text):
         string = text,
         flags = re.X | re.M # re.X 等同于 re.VERBOSE
     )
-    # 清理可能产生的连续空格，将其合并为单个空格
-    cleaned_text = re.sub(r'[^\S\r\n]+', ' ', text_no_timestamps)
+    # 保留正文缩进和空格，避免损坏代码或列表格式。
+    cleaned_text = text_no_timestamps
     # 最后统一清理首尾空格
     return cleaned_text.strip()
 

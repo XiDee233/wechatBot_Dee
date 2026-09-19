@@ -4059,10 +4059,10 @@ document.getElementById('oneKeyDiagnosticButton').addEventListener('click', asyn
                     </div>
                     <div class="form-group">
                          <div class="switch-item">
-                            <label>以换行符分隔消息</label>
+                            <label>拆分回复为多条消息</label>
                             <div class="switch"><label class="switch-label"><input type="checkbox" name="SEPARATE_ROW_SYMBOLS" {% if config.SEPARATE_ROW_SYMBOLS %}checked{% endif %}><span class="slider round"></span></label></div>
                         </div>
-                        <small>开启后，消息将同时使用换行符和反斜线（\）分隔；关闭时，仅使用反斜线（\）分隔。</small>
+                        <small>默认关闭：一条回复发送为一条消息，保留换行、缩进、反斜线和 $。开启后，普通文本按原有规则拆分；含代码块的回复仍整条发送。保存后生效。</small>
                     </div>
                 </div>
 

@@ -3558,7 +3558,7 @@ def get_default_config():
         "AVERAGE_TYPING_SPEED": 0.2,
         "RANDOM_TYPING_SPEED_MIN": 0.05,
         "RANDOM_TYPING_SPEED_MAX": 0.1,
-        "SEPARATE_ROW_SYMBOLS": True,
+        "SEPARATE_ROW_SYMBOLS": False,
         "ENABLE_MEMORY": True,
         "MEMORY_TEMP_DIR": 'Memory_Temp',
         "MAX_MESSAGE_LOG_ENTRIES": 30,
