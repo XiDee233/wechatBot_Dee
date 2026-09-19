@@ -1,4 +1,5 @@
 """Regression tests without connecting to WeChat or an LLM API."""
+import sys
 import ast
 import logging
 from pathlib import Path
@@ -9,6 +10,8 @@ import unittest
 from unittest.mock import Mock
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from reply_format import normalize_reply
 NAMES = {'send_reply', 'split_message_with_context', 'contains_code_block',
          'remove_timestamps', 'remove_parentheses_and_content'}
 
@@ -19,7 +22,7 @@ class MessageFormattingTests(unittest.TestCase):
                                   and n.name in NAMES], type_ignores=[])
         self.enabled = False
         self.wx = SimpleNamespace(SendMsg=Mock(return_value=True))
-        self.ns = dict(re=re, random=random, logger=logging.getLogger('format-test'),
+        self.ns = dict(normalize_reply=normalize_reply, re=re, random=random, logger=logging.getLogger('format-test'),
                        time=SimpleNamespace(time=lambda: 0, sleep=lambda _: None),
                        is_sending_message=False, ENABLE_EMOJI_SENDING=False,
                        ENABLE_MEMORY=False, REMOVE_PARENTHESES=True, wx=self.wx,

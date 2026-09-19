@@ -35,6 +35,7 @@ os.environ["PROJECT_NAME"] = 'iwyxdxl/WeChatBot_WXAUTO_SE'
 # 消息收发由 wxbot 兼容层驱动（wechatauto，适配微信 4.x 自绘渲染）
 from wxbot import WeChat
 from history_tools import complete_with_history
+from reply_format import normalize_reply
 from vision import recognize_image as recognize_with_main_model
 from wechatauto.param import WxParam
 WxParam.ENABLE_FILE_LOGGER = False
@@ -511,6 +512,7 @@ def _is_base_url_untrusted(base_url: str) -> bool:
 
 # 初始化OpenAI客户端
 client = OpenAI(
+    max_retries=0,
     api_key=DEEPSEEK_API_KEY,
     base_url=DEEPSEEK_BASE_URL
 )
@@ -920,7 +922,7 @@ def get_deepseek_response(message, user_id, store_context=True, is_summary=False
             logger.info(f"工具调用 (store_context=False)，ID: {user_id}。仅发送提供的消息。")
 
         # --- 调用 API ---
-        reply = call_chat_api_with_retry(messages_to_send, user_id, is_summary=is_summary, allow_history=store_context and not is_summary)
+        reply = normalize_reply(call_chat_api_with_retry(messages_to_send, user_id, is_summary=is_summary, allow_history=store_context and not is_summary))
 
         # --- 如果需要，存储助手回复到上下文中 ---
         if store_context:
@@ -940,7 +942,7 @@ def get_deepseek_response(message, user_id, store_context=True, is_summary=False
 
     except Exception as e:
         logger.error(f"Chat 调用失败 (ID: {user_id}): {str(e)}", exc_info=True)
-        return "抱歉，我现在有点忙，稍后再聊吧。"
+        return "本次模型请求失败，未生成回复。具体错误已记录到运行日志。"
 
 
 def strip_before_thought_tags(text):
@@ -953,7 +955,7 @@ def strip_before_thought_tags(text):
     else:
         return text
 
-def call_chat_api_with_retry(messages_to_send, user_id, max_retries=2, is_summary=False, allow_history=False):
+def call_chat_api_with_retry(messages_to_send, user_id, max_retries=0, is_summary=False, allow_history=False):
     """
     调用 Chat API 并在第一次失败或返回空结果时重试。
 
@@ -970,6 +972,7 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=2, is_summar
         raise RuntimeError("抱歉，您所使用的API服务商不受信任，请联系网站管理员")
 
     attempt = 0
+    last_error = None
     while attempt <= max_retries:
         try:
             logger.debug(f"发送给 API 的消息 (ID: {user_id}): {messages_to_send}")
@@ -989,7 +992,7 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=2, is_summar
                     user_id, vision=lambda path: recognize_with_main_model(path, get_dynamic_config))
             if history_session is not None:
                 response = complete_with_history(
-                    client.chat.completions.create, messages_to_send, history_session, **options)
+                    client.with_options(max_retries=0).chat.completions.create, messages_to_send, history_session, **options)
             else:
                 response = client.chat.completions.create(messages=messages_to_send, **options)
 
@@ -1021,10 +1024,11 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=2, is_summar
             logger.error(json.dumps(messages_to_send, ensure_ascii=False, indent=2))
 
         except Exception as e:
+            last_error = e
             logger.error(f"错误请求消息体: {MODEL}")
             logger.error(json.dumps(messages_to_send, ensure_ascii=False, indent=2))
             error_info = str(e)
-            logger.error(f"自动重试：第 {attempt + 1} 次调用 {MODEL}失败 (ID: {user_id}) 原因: {error_info}", exc_info=False)
+            logger.error(f"第 {attempt + 1} 次调用 {MODEL}失败 (ID: {user_id}) 原因: {error_info}", exc_info=False)
 
             # 细化错误分类
             if "real name verification" in error_info:
@@ -1054,7 +1058,7 @@ def call_chat_api_with_retry(messages_to_send, user_id, max_retries=2, is_summar
 
         attempt += 1
 
-    raise RuntimeError("阿文提示：api余额不足")
+    raise RuntimeError("主模型请求失败，具体错误已记录到运行日志") from last_error
 
 def get_assistant_response(message, user_id, is_summary=False):
     """
@@ -2046,6 +2050,7 @@ def send_reply(user_id, sender_name, username, original_merged_message, reply, i
                 emoji_path = send_emoji(emotion)
 
         # --- 文本消息处理 ---
+        reply = normalize_reply(reply)
         # Preserve code syntax and indentation; prose cleanup can corrupt code.
         if not contains_code_block(reply):
             reply = remove_timestamps(reply)

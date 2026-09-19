@@ -107,12 +107,13 @@ class HistoryTests(unittest.TestCase):
     def test_db_failure_not_empty_history(self):
         self.db._run_msg_query = Mock(side_effect=RuntimeError('DB unavailable'))
         self.assertEqual(self.session.execute('search_group_history', {'days_ago': 1})['status'], 'unavailable')
+        self.db._run_msg_query.assert_called_once()
 
 class ToolLoopTests(unittest.TestCase):
     def test_tool_call_reasoning_and_evidence(self):
         from openai.types.chat import ChatCompletion
         first = ChatCompletion.model_validate({'id': '1', 'created': 1, 'model': 'test', 'object': 'chat.completion', 'choices': [{'index': 0, 'finish_reason': 'tool_calls', 'message': {'role': 'assistant', 'content': None, 'reasoning_content': 'need records', 'tool_calls': [{'id': 't1', 'type': 'function', 'function': {'name': 'search_group_history', 'arguments': '{"days_ago":10,"sender":"甲"}'}}]}}]})
-        second = ChatCompletion.model_validate({'id': '2', 'created': 2, 'model': 'test', 'object': 'chat.completion', 'choices': [{'index': 0, 'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': '甲说了原话[H1]'}}]})
+        second = ChatCompletion.model_validate({'id': '2', 'created': 2, 'model': 'test', 'object': 'chat.completion', 'choices': [{'index': 0, 'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': '9月9日，甲说了原话。'}}]})
         db = FakeDB(); db.add(10, '原话')
         create = Mock(side_effect=[first, second])
         result = complete_with_history(create, [{'role': 'user', 'content': '10天前甲说了啥'}], HistorySession(db, GROUP, now=NOW), model='deepseek-chat')
@@ -120,7 +121,8 @@ class ToolLoopTests(unittest.TestCase):
         self.assertEqual(calls[-2]['reasoning_content'], 'need records')
         evidence = json.loads(calls[-1]['content'])
         self.assertEqual(evidence['records'][0]['text'], '原话')
-        self.assertIn('2026-09-09', result.choices[0].message.content)
+        self.assertIn('9月9日', result.choices[0].message.content)
+        self.assertNotIn('依据本机', result.choices[0].message.content)
         self.assertEqual(create.call_args.kwargs['model'], 'deepseek-chat')
         db.close()
 

@@ -48,7 +48,7 @@ wechatbot = "bot:main"
 wechatbot-webui = "config_editor:main"
 
 [tool.setuptools]
-py-modules = ["bot", "config", "config_editor", "run", "test_bot", "wxbot", "history_tools", "vision"]
+py-modules = ["bot", "config", "config_editor", "run", "test_bot", "wxbot", "history_tools", "vision", "reply_format"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
