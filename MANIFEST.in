@@ -1,5 +1,5 @@
 recursive-include emojis *
-recursive-include prompts *
+recursive-include examples *
 recursive-include templates *
 recursive-include Demo_Image *
 recursive-include forum_data *

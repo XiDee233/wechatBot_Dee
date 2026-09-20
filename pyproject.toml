@@ -3,14 +3,20 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wechatbot-new"
+name = "wechatbot-dee"
 version = "2.2.5"
-description = "智能微信聊天机器人（基于 KouriChat 重构）：接入 DeepSeek/GPT/Gemini 大模型，拟人化角色扮演、记忆、情绪表情包、定时任务、联网搜索；兼容微信 4.1.12+，底层使用 wechatauto-replica"
+description = "智能微信聊天机器人（wechatBot_Dee，基于 KouriChat 重构并独立演进）：接入 DeepSeek/GPT/Gemini 大模型，拟人化角色扮演、多步骤 Agent、群历史与附件查询、记忆、情绪表情包、定时任务；兼容微信 4.1.12+，底层使用 wechatauto-replica"
 readme = "readme.md"
 requires-python = ">=3.9"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-keywords = ["wechat", "weixin", "wechat-bot", "chatbot", "ai", "llm", "deepseek", "gpt", "kourichat", "roleplay", "automation", "wechatauto"]
+authors = [
+    { name = "wechatBot_Dee contributors" },
+]
+maintainers = [
+    { name = "XiDee233", url = "https://github.com/XiDee233" },
+]
+keywords = ["wechat", "weixin", "wechat-bot", "chatbot", "ai", "llm", "deepseek", "gpt", "kourichat", "roleplay", "automation", "wechatauto", "agent"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Win32 (MS Windows)",
@@ -39,9 +45,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/fanyuantaier/wechatbot-new"
-Source = "https://github.com/fanyuantaier/wechatbot-new"
-Issues = "https://github.com/fanyuantaier/wechatbot-new/issues"
+Homepage = "https://github.com/XiDee233/wechatBot_Dee"
+Source = "https://github.com/XiDee233/wechatBot_Dee"
+Issues = "https://github.com/XiDee233/wechatBot_Dee/issues"
+"Upstream (reference)" = "https://github.com/fanyuantaier/wechatbot-new"
+"Original project" = "https://github.com/KouriChat/KouriChat"
 
 [project.scripts]
 wechatbot = "bot:main"
@@ -51,8 +59,10 @@ wechatbot-webui = "config_editor:main"
 py-modules = ["bot", "config", "config_editor", "run", "test_bot", "wxbot", "history_tools", "vision", "reply_format"]
 include-package-data = true
 
+# 说明：prompts/ 是首次启动时从 examples/prompts 自动复制的运行时目录，
+# 且被 .gitignore 排除，因此不纳入打包，避免把私人提示词打进 sdist。
 [tool.setuptools.packages.find]
-include = ["emojis*", "prompts*", "templates*", "Demo_Image*", "forum_data*"]
+include = ["emojis*", "templates*", "Demo_Image*", "forum_data*"]
 
 [tool.setuptools.package-data]
 "*" = ["*", "*/*", "*/*/*", "*/*/*/*"]
